@@ -1,0 +1,2 @@
+CONFIG_LOCATION = None
+OS = None
