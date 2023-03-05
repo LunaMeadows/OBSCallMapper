@@ -31,7 +31,7 @@ class ImageProcessing:
         """
         self.windows = {}
         self.camera_pos = {}
-        self.save_location = save_location
+        self.save_location = str(save_location)
         if not os.path.exists(self.save_location):
             os.makedirs(self.save_location)
         if not os.path.exists(os.path.join(self.save_location, 'cameras')):
@@ -47,6 +47,7 @@ class ImageProcessing:
         if win32gui.IsWindowVisible( hwnd ):
             if win32gui.GetWindowText(hwnd):
                 self.windows[win32gui.GetWindowText(hwnd)[0:28]] = win32gui.GetWindowText(hwnd)
+
 
     def get_windows(self):
         """
@@ -94,13 +95,19 @@ class ImageProcessing:
                 screenshotter = mss()
                 for filename in screenshotter.save(output=os.path.join(self.save_location+'/cameras/', 'tempFullScreen.png'), mon=-1):
                     image = Image.open(filename)
-                    cropped_image = image.crop((x, y - 82, x1 - 10, y1 - 45))
-                    if self.debug == False:
+                    cropped_image = image.crop((x, y, x1, y1))
+                    if not self.debug:
                         os.remove(filename)
                     return cropped_image
         else:
             raise WindowError("Empty string was passed instead of window title")
 
+    def get_exe_name(self, window_title):
+        if (platform.system() == 'Windows'):
+            pass
+        elif (platform.system() == 'Linux'):
+            window = wmctrl.Window.by_name(window_title)[0]
+            return "{id}\r\n{title}\r\n{exe}".format(id=int(window.id, 16), title=window.wm_name, exe=window.wm_class.split('.')[0])
 
     def get_camera_pos(self, window_title):
         """
@@ -121,13 +128,14 @@ class ImageProcessing:
             #Saves the window image and passes it to cv2 to process camera locations.
             window_img.save(os.path.join(self.save_location+'/cameras/','window.png'))
             process_img = cv2.imread(os.path.join(self.save_location+'/cameras/','window.png'))
+            process_img_masked = cv2.imread(os.path.join(self.save_location+'/cameras/','window.png'))
 
             #Filters image and creates a mask of all black areas to mark out where cameras are
             hsv = cv2.cvtColor(process_img, cv2.COLOR_BGR2HSV)
             background = np.array([0, 0, 0])
             background2 = np.array([1, 1, 1])
             mask = cv2.inRange(hsv, background, background2)
-            process_img[mask > 0] = (0, 0, 255)
+            process_img_masked[mask > 0] = (0, 0, 255)
             kernel = np.ones((5, 5), np.uint8)
             erosion = cv2.erode(mask, kernel, iterations=0)
             edged = cv2.Canny(erosion, 30, 200)
@@ -156,11 +164,10 @@ class ImageProcessing:
                         y_old = y_position
                         x_old = x_position
                         x_position, y_position, width, height = rect
-                        self.camera_pos[os.path.join(self.save_location+"/cameras/", str(index) + '.jpg')] = rect
-                        if self.debug:
-                            out = process_img[y_position + 10:y_position + height - 10, x_position + 10:x_position + width - 10]
-                            if len(out.tobytes()) > 0:
-                                cv2.imwrite(os.path.join(self.save_location+"/cameras/", str(index) + '.jpg'), out)
+                        self.camera_pos[os.path.join(self.save_location+"/cameras/", str(index) + '.jpg')] = [rect, '']
+                        out = process_img[y_position + 10:y_position + height-10, x_position + 10:x_position + width-10]
+                        if len(out.tobytes()) > 0:
+                            cv2.imwrite(os.path.join(self.save_location+"/cameras/", str(index) + '.jpg'), out)
                         index += 1
         if not self.debug:
             os.remove(os.path.join(self.save_location+'/cameras/','window.png'))
@@ -169,9 +176,3 @@ class ImageProcessing:
 
 class WindowError(Exception):
     pass
-
-# im = ImageProcessing(os.getcwd(), True)
-# # im.get_screenshot('cows are cool')
-# # index = ([i for i, s in enumerate(im.get_windows()) if 'General' in s])
-# # print(list(im.get_windows().values()))
-# print(im.get_camera_pos('General', debug=True))

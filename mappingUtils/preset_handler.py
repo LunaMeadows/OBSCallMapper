@@ -7,6 +7,7 @@ from typing import List, Any
 
 import jsonschema
 
+
 class PresetHandler():
     """
     The class to handle presets.
@@ -48,8 +49,8 @@ class PresetHandler():
 
     def load_json(self, json_file):
         """
-        Will load a provided json file and grab the presets. Will also validate the presets to make sure they are corectly formated.
-        :param json_file: File containg presets in json format
+        Will load a provided json file and grab the presets. Will also validate the presets to make sure they are correctly formatted.
+        :param json_file: File contains presets in json format
         :return: None
         """
         try:
@@ -150,4 +151,5 @@ class PresetHandler():
         json_file = open(new_presets_file, 'w', encoding='UTF-8')
         json_file.write(str('{"Presets":[]}'))
         json_file.close()
+        self.presets = []
         self.json_file = open(new_presets_file, 'r', encoding='UTF-8')
