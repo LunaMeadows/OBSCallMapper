@@ -5,24 +5,24 @@ It will create and run the users side of the application and comunicate with the
 """
 import os
 import platform
-
 import toga
-from toga.style.pack import COLUMN, Pack, ROW, CENTER, HIDDEN
+from toga.style.pack import COLUMN, Pack, ROW, CENTER
 from mappingUtils import image_processing, preset_handler, obs_plugin_server
 
 
 # noinspection PyAttributeOutsideInit
+# pylint: disable=attribute-defined-outside-init
 class ObsMapper(toga.App):
     """
         OBSMapper User Interface
     """
 
+    # pylint: disable=too-many-instance-attributes
     def startup(self):
-        # pylint: disable=attribute-defined-outside-init
         """
         Main window
         """
-        self.main_window = toga.MainWindow("OBS Call Mapper")
+        self.main_window = toga.MainWindow(title="OBS Call Mapper")
         self.data_path = os.path.join(str(app.paths.data), 'OBSCallMapper')
         self.cam_images = []
         self.cams = {}
@@ -34,59 +34,65 @@ class ObsMapper(toga.App):
         self.main_window.resizeable = False
         self.new_preset = False
         if platform.system() == 'Windows':
-            self.buttonHeight = 26
+            self.button_height = 26
         if platform.system() == 'Linux':
-            self.buttonHeight = 36
+            self.button_height = 36
         try:
             self.p_h.load_json(os.path.join(self.data_path, "presets.json"))
         except FileNotFoundError:
             self.p_h.create_presets(os.path.join(self.data_path, "presets.json"))
 
         left_content = toga.Box(id='button_pane', style=Pack(direction=COLUMN, alignment=CENTER))
+        new_preset_button = toga.Button(id='new_preset', text='New Preset', style=Pack(width=200, height=34), on_press=self.edit_profile_window)
         left_content.add(
-            toga.Selection(id='preset_selection', items=self.p_h.get_preset_names(), style=Pack(width=200)),
-            toga.Button(id='load_preset', text='Load Preset', style=Pack(width=200), on_press=self.load_preset),
-            toga.Button(id='edit_preset', text='Edit Preset', style=Pack(width=200), on_press=self.edit_profile_window),
-            toga.Button(id='delete_preset', text='Delete Preset', style=Pack(width=200), on_press=self.delete_preset),
-            toga.Button(id='new_preset', text='New Preset', style=Pack(width=200), on_press=self.edit_profile_window),
+            toga.Selection(id='preset_selection', items=self.p_h.get_preset_names(), style=Pack(width=200, height=34)),
+            toga.Button(id='load_preset', text='Load Preset', style=Pack(width=200, height=34), on_press=self.load_preset),
+            toga.Button(id='edit_preset', text='Edit Preset', style=Pack(width=200, height=34), on_press=self.edit_profile_window),
+            toga.Button(id='delete_preset', text='Delete Preset', style=Pack(width=200, height=34), on_press=self.delete_preset),
+            new_preset_button,
+            toga.Button(id='reload_windows', text='Reload Windows', style=Pack(width=200, height=34), on_press=self.reload_windows),
             toga.Box(id='flex_box_1', style=Pack(direction=COLUMN, flex=1)),
-            toga.Button(id='map_cameras', text='Map Cameras', style=Pack(width=200), on_press=self.map_cameras),
+            toga.Button(id='map_cameras', text='Map Cameras', style=Pack(width=200, height=34), on_press=self.map_cameras),
         )
 
         right_content = toga.Box(id='option_pane', style=Pack(direction=COLUMN, alignment=CENTER))
         right_content.add(
             toga.Box(id='window_selection_box', style=Pack(direction=ROW, width=420, alignment=CENTER), children=[
                 toga.Selection(id='window_selection', items=list(self.image_proc.get_windows().keys()),
-                               style=Pack(width=280)),
-                toga.Button(id='select_window', text='Select Window', on_press=self.get_cameras)
+                               style=Pack(width=280, height=34)),
+                toga.Button(id='select_window', text='Select Window', style=Pack(height=34), on_press=self.get_cameras)
             ]),
             toga.Box(id='camera_control_buttons', style=Pack(direction=ROW, width=420), children=[
-                toga.Button(id='previous', text='Previous', style=Pack(width=100), on_press=self.prev_image),
-                toga.Label(id='person_label', text='', style=Pack(width=200, padding_top=10, text_align=CENTER)),
-                toga.Button(id='next', text='Next', style=Pack(width=100), on_press=self.next_image)
+                toga.Button(id='previous', text='Previous', style=Pack(width=100, height=34), on_press=self.prev_image),
+                toga.Label(id='person_label', text='', style=Pack(width=200, height=34, padding_top=10, text_align=CENTER)),
+                toga.Button(id='next', text='Next', style=Pack(width=100, height=34), on_press=self.next_image)
             ]),
             toga.Box(id='image_wrapper', style=Pack(direction=ROW, width=420, height=232), children=[
                 toga.ImageView(id='image_viewer'),
             ]),
             toga.Box(id='flex_box_2', style=Pack(direction=COLUMN, flex=1)),
             toga.Box(id='cam_selection_wrapper', style=Pack(direction=ROW, width=420, height=100), children=[
-                toga.Selection('cam_selection', items=[], style=Pack(width=320)),
-                toga.Button(id='bind_camera', text='Bind', style=Pack(width=100), on_press=self.bind_camera)
+                toga.Selection('cam_selection', items=[], style=Pack(width=320, height=34)),
+                toga.Button(id='bind_camera', text='Bind', style=Pack(width=100, height=34), on_press=self.bind_camera)
             ])
         )
         if platform.system() == 'Windows':
             split = toga.SplitContainer()
             split.content = [(left_content, 0.1), (right_content, 0.2)]
-        if platform.system() == 'Linux':
+        elif platform.system() == 'Linux':
             left_container = toga.ScrollContainer(horizontal=False)
             left_container.content = left_content
             right_container = toga.ScrollContainer(horizontal=False)
             right_container.content = right_content
             split = toga.SplitContainer()
             split.content = [(left_container, 0.1), (right_container, 0.2)]
+        else:
+            return
 
         self.main_window.content = split
         self.main_window.show()
+        if len(self.p_h.get_preset_names()) == 0:
+            self.edit_profile_window(new_preset_button)
 
     def prev_image(self, widget):
         """
@@ -173,8 +179,17 @@ class ObsMapper(toga.App):
         preset_selection.items = self.p_h.get_preset_names()
         cam_selection.items = []
 
+    def reload_windows(self, widget):
+        """
+        Reloads windows for window selection
+        :param widget:
+        :return:
+        """
+        window_selection = widget.window.widgets.get('window_selection')
+        window_selection.items = list(self.image_proc.get_windows().keys())
+
     def edit_profile_window(self, widget):
-        # pylint: disable=attribute-defined-outside-init
+        # pylint: disable=attribute-defined-outside-init, too-many-branches
         """
         Window for editing profiles
         :param widget:
@@ -187,19 +202,19 @@ class ObsMapper(toga.App):
             """
             preset_selection = widget.app.main_window.widgets.get('preset_selection')
             save_edit = None
+            edit_box = None
             for item in widget.content.children:
                 if item.id == 'save_edit':
                     save_edit = item
                 if item.id == 'edit_box':
                     edit_box = item
-                if item.id == 'edit_window':
-                    edit_window = item
             preset_selection.enabled = True
             children = edit_box.children
             for i in reversed(range(len(children))):
                 edit_box.remove(children[i])
             if save_edit is None:
-                widget.content.add(toga.Button(id='save_edit', text='Save edit', style=Pack(width=420), on_press=self.save_edit))
+                widget.content.add(
+                    toga.Button(id='save_edit', text='Save edit', style=Pack(width=420), on_press=self.save_edit))
             widget.hide()
 
         if widget.id == 'new_preset':
@@ -232,7 +247,7 @@ class ObsMapper(toga.App):
         # noinspection PyTypeChecker
         window = toga.Window(title='Edit Profiles Window', on_close=hide_window, size=(420, 464))
         widget.app.windows.add(window)
-        preset_name = toga.TextInput(id='preset_name', value=preset_selection.value, on_change=self.text_handler(20))
+        preset_name = toga.TextInput(id='preset_name', value=preset_selection.value, placeholder='Preset name', on_change=self.text_handler(20))
         box = toga.Box(id="edit_window", style=Pack(width=420, direction=COLUMN), children=[
             preset_name,
             people_table,
@@ -309,10 +324,9 @@ class ObsMapper(toga.App):
                     edit_box.remove(children[i])
                 edit_window.add(save_edit)
 
-
             edit_box.add(
                 new_person,
-                toga.Button(id = 'save_change', text='Save Change', style=Pack(width=100), on_press=save_change)
+                toga.Button(id='save_change', text='Save Change', style=Pack(width=100), on_press=save_change)
             )
 
     def edit_person(self, widget):
@@ -334,15 +348,17 @@ class ObsMapper(toga.App):
                     Saves changes to table and removes edit_box widget
                     """
                     if len(name_changed.value) > 0:
+                        # pylint: disable=protected-access
+                        # noinspection PyProtectedMember
                         people = people_table.data._data
-                        peopleEdited = []
+                        people_edited = []
                         for i, person in enumerate(people):
                             if person.people == people_table.selection.people:
-                                peopleEdited.append(name_changed.value)
+                                people_edited.append(name_changed.value)
                             else:
-                                peopleEdited.append(person.people)
+                                people_edited.append(person.people)
                         people_table.data.clear()
-                        for person in peopleEdited:
+                        for person in people_edited:
                             people_table.data.append(person)
                     children = edit_box.children
                     for i in reversed(range(len(children))):
@@ -377,10 +393,10 @@ class ObsMapper(toga.App):
         for cam in self.cams.values():
             if platform.system() == 'Windows':
                 cameras.append(
-                    {'camName': cam[1], "x": cam[0][0] , "x1": cam[0][2] , "y": int(cam[0][1]) , "y1": cam[0][3]})
+                    {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]), "y1": cam[0][3]})
             if platform.system() == 'Linux':
                 cameras.append(
-                    {'camName': cam[1], "x": cam[0][0] , "x1": cam[0][2] , "y": int(cam[0][1]) + 40 , "y1": cam[0][3]})
+                    {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]) + 40, "y1": cam[0][3]})
         obs_cams_send = str({
             "arg": "crop camera",
             "os": platform.system(),

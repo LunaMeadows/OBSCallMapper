@@ -6,7 +6,7 @@ local json = require("dkjson")
 local our_server = nil
 
 -- Set true to get debug printing
-local debug_print_enabled = true
+local debug_print_enabled = false
 
 function debug_print(a_string)
     if debug_print_enabled then
