@@ -38,4 +38,14 @@ def test_get_camera_pos_window_does_not_exist():
     with pytest.raises(IndexError):
         ip.get_camera_pos('Cows')
 
+def test_get_exe_name_window_exists():
+    ip = image_processing.ImageProcessing(os.getcwd(), True)
+    assert type(ip.get_exe_name('General')) == str
+
+def test_get_exe_name_window_does_not_exists():
+    ip = image_processing.ImageProcessing(os.getcwd(), True)
+    with pytest.raises(IndexError):
+        ip.get_exe_name('Cows')[0]
+
+
 
