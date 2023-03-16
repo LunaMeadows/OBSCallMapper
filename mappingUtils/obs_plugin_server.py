@@ -35,4 +35,4 @@ class Server:
         Sends command to obs plugin client
         :param msg: command message
         """
-        self.server_socket.sendto(bytes(str(msg), "utf-8"), ('', self.port))
+        self.server_socket.sendto(bytes(str(msg), "utf-8"), ('localhost', self.port))
