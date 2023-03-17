@@ -1,70 +1,113 @@
-"""ObsMapper
-This is the main module for the OBSCamMapper application.
-
-It will create and run the users side of the application and comunicate with the obs plugin
 """
-import os
-import platform
-import toga
-from toga.style.pack import COLUMN, Pack, ROW, CENTER
+Creates an interface for users to interact with and streamline the cam mapping process.
+"""
+import json  # Used to read in the source export from OBS to try and find a source matching the name of the preset
+import os  # Used to create proper paths for files and folders
+import platform  # Used to find out the users system to create proper scenes in OBS
+import webbrowser  # Used to open folders
+from typing import Dict, List, Union  # Used for type hinting
+
+import toga  # Used to create the user interface
+from toga import MainWindow
+from toga.style.pack import COLUMN, Pack, ROW, CENTER  # Used for styling widgets
+from toga.command import Group  # Used to add items to default command groups
+
 from mappingUtils import image_processing, preset_handler, obs_plugin_server
 
 
 # noinspection PyAttributeOutsideInit
 # pylint: disable=attribute-defined-outside-init
+# noinspection PyTypeChecker
 class ObsMapper(toga.App):
     """
-        OBSMapper User Interface
+    A class of toga.App to create the main user interface for the application
+    Attributes
+    ----------
+    main_window
+        Main window for toga application
+    data_path
+        File path for data to be stored in
+    cam_images
+        List of camera images to be displayed in application
+    cams
+        Dictionary of all camera images.
+        Key == path to camera screenshot
+        Value == list containing rect of camera location in window, name belonging to person who owns camera
+    image_proc
+        Image processing class. See module image_processing for more information
+    preset_handler
+        Preset handler class. See module preset_handler for more information
+    obs_server
+        Obs plugin server class. See module obs_plugin_server for more information
+    new_preset
+        Boolean to check if a preset is new or being edited
+    obs_scenes
+        OBS scenes from OBS export json file
     """
+    main_window: MainWindow
+    data_path: str
+    cam_images: List[str]
+    cams: Dict[str, List[Union[list, str]]]
+    new_preset: False
+    image_proc: image_processing.ImageProcessing
+    preset_handler: preset_handler.PresetHandler
+    obs_server: obs_plugin_server.Server
+    obs_scenes: dict
 
     # pylint: disable=too-many-instance-attributes
     def startup(self):
         """
-        Main window
+        Creates user interface and initializes all needed variables
         """
-        self.main_window = toga.MainWindow(title="OBS Call Mapper")
-        self.data_path = os.path.join(str(app.paths.data), 'OBSCallMapper')
+        self.main_window = toga.MainWindow(title="OBS Call Mapper", size=(640, 381), resizeable=False)
+        self.data_path = os.path.join(str(self.paths.data), 'OBS Call Mapper')
         self.cam_images = []
         self.cams = {}
+        self.new_preset = False
         self.image_proc = image_processing.ImageProcessing(self.data_path, False)
-        self.p_h = preset_handler.PresetHandler()
+        self.preset_handler = preset_handler.PresetHandler()
         self.obs_server = obs_plugin_server.Server()
         self.obs_server.start_server()
-        self.main_window.size = (640, 381)
-        self.main_window.resizeable = False
-        self.new_preset = False
-        if platform.system() == 'Windows':
-            self.button_height = 26
-        if platform.system() == 'Linux':
-            self.button_height = 36
+        self.obs_scenes = self.get_obs_scene_export()
+        # Tries to load presets.json and creates a new preset if it does not already exist
         try:
-            self.p_h.load_json(os.path.join(self.data_path, "presets.json"))
+            self.preset_handler.load_json(os.path.join(self.data_path, "presets.json"))
         except FileNotFoundError:
-            self.p_h.create_presets(os.path.join(self.data_path, "presets.json"))
+            self.preset_handler.create_presets(os.path.join(self.data_path, "presets.json"))
 
+        # Creates main window for user interface
         left_content = toga.Box(id='button_pane', style=Pack(direction=COLUMN, alignment=CENTER))
-        new_preset_button = toga.Button(id='new_preset', text='New Preset', style=Pack(width=200, height=34), on_press=self.edit_profile_window)
+        new_preset_button = toga.Button(id='new_preset', text='New Preset', style=Pack(width=200, height=34),
+                                        on_press=self.edit_preset_window)
         left_content.add(
-            toga.Selection(id='preset_selection', items=self.p_h.get_preset_names(), style=Pack(width=200, height=34)),
-            toga.Button(id='load_preset', text='Load Preset', style=Pack(width=200, height=34), on_press=self.load_preset),
-            toga.Button(id='edit_preset', text='Edit Preset', style=Pack(width=200, height=34), on_press=self.edit_profile_window),
-            toga.Button(id='delete_preset', text='Delete Preset', style=Pack(width=200, height=34), on_press=self.delete_preset),
+            toga.Selection(id='preset_selection', items=self.preset_handler.get_preset_names(),
+                           style=Pack(width=200, height=34)),
+            toga.Button(id='load_preset', text='Load Preset', style=Pack(width=200, height=34),
+                        on_press=self.load_preset),
+            toga.Button(id='edit_preset', text='Edit Preset', style=Pack(width=200, height=34),
+                        on_press=self.edit_preset_window),
+            toga.Button(id='delete_preset', text='Delete Preset', style=Pack(width=200, height=34),
+                        on_press=self.delete_preset),
             new_preset_button,
-            toga.Button(id='reload_windows', text='Reload Windows', style=Pack(width=200, height=34), on_press=self.reload_windows),
             toga.Box(id='flex_box_1', style=Pack(direction=COLUMN, flex=1)),
-            toga.Button(id='map_cameras', text='Map Cameras', style=Pack(width=200, height=34), on_press=self.map_cameras),
+            toga.Button(id='reload_windows', text='Reload Windows', style=Pack(width=200, height=34),
+                        on_press=self.reload_windows),
+            toga.Button(id='map_cameras', text='Map Cameras', style=Pack(width=200, height=34),
+                        on_press=self.map_cameras),
         )
-
+        window_selection = toga.Selection(id='window_selection', items=list(self.image_proc.get_windows().keys()),
+                                          style=Pack(width=280, height=34))
+        window_selection.items = window_selection.items + ["Select Screenshot"]
         right_content = toga.Box(id='option_pane', style=Pack(direction=COLUMN, alignment=CENTER))
         right_content.add(
             toga.Box(id='window_selection_box', style=Pack(direction=ROW, width=420, alignment=CENTER), children=[
-                toga.Selection(id='window_selection', items=list(self.image_proc.get_windows().keys()),
-                               style=Pack(width=280, height=34)),
+                window_selection,
                 toga.Button(id='select_window', text='Select Window', style=Pack(height=34), on_press=self.get_cameras)
             ]),
             toga.Box(id='camera_control_buttons', style=Pack(direction=ROW, width=420), children=[
                 toga.Button(id='previous', text='Previous', style=Pack(width=100, height=34), on_press=self.prev_image),
-                toga.Label(id='person_label', text='', style=Pack(width=200, height=34, padding_top=10, text_align=CENTER)),
+                toga.Label(id='person_label', text='',
+                           style=Pack(width=200, height=34, padding_top=10, text_align=CENTER)),
                 toga.Button(id='next', text='Next', style=Pack(width=100, height=34), on_press=self.next_image)
             ]),
             toga.Box(id='image_wrapper', style=Pack(direction=ROW, width=420, height=232), children=[
@@ -76,23 +119,78 @@ class ObsMapper(toga.App):
                 toga.Button(id='bind_camera', text='Bind', style=Pack(width=100, height=34), on_press=self.bind_camera)
             ])
         )
+        # Creates a command to allow user to change the provided OBS exported json
+        obs_sources_command = toga.Command(
+            action=lambda _: self.main_window.open_file_dialog('Select OBS Sources exported json',
+                                                               on_result=self.get_obs_scene_export,
+                                                               file_types=['json']),
+            text='Select OBS Source Export',
+            group=Group.APP
+        )
+        debug_enable = toga.Command(
+            action=self.toggle_debugging,
+            text='Toggle debugging',
+            group=Group.HELP
+        )
+        open_data_folder = toga.Command(
+            action=self.open_data_folder,
+            text='Open data folder',
+            group=Group.APP
+        )
+        self.commands.add(obs_sources_command, debug_enable, open_data_folder)
+        # Checks if the platform is a Windows machine and if so sets the split container to the content,
+        # if it is not it will create scroll containers and then set it into the split container
         if platform.system() == 'Windows':
             split = toga.SplitContainer()
             split.content = [(left_content, 0.1), (right_content, 0.2)]
-        elif platform.system() == 'Linux':
+        else:
             left_container = toga.ScrollContainer(horizontal=False)
             left_container.content = left_content
             right_container = toga.ScrollContainer(horizontal=False)
             right_container.content = right_content
             split = toga.SplitContainer()
             split.content = [(left_container, 0.1), (right_container, 0.2)]
-        else:
-            return
 
+        # Sets main window to the split container and then shows it
         self.main_window.content = split
         self.main_window.show()
-        if len(self.p_h.get_preset_names()) == 0:
-            self.edit_profile_window(new_preset_button)
+        # Checks to see if a preset already exists and if none exist it will open a window to create a new preset
+        if len(self.preset_handler.get_preset_names()) == 0:
+            self.edit_preset_window(new_preset_button)
+
+    def toggle_debugging(self, widget):
+        """
+        Toggles debugging
+        """
+        self.image_proc.toggle_debugging()
+
+    def open_data_folder(self, widget):
+        """
+        Opens data folder for application
+        """
+        webbrowser.open(os.path.realpath(self.data_path))
+
+    def get_obs_scene_export(self, _=None, file_path: str =""):
+        """
+        Allows user to select scene export json file from OBS
+        :param file_path: Selected path to the obs exported json file.
+        :return: Json dict or None
+        """
+        # Sets scene_file to the locally stored json scenes file.
+        scene_file = os.path.join(self.data_path, 'obs_scenes.json')
+        try:
+            # Try to open and read the scene_file
+            scene_file = open(scene_file, 'r', encoding='UTF-8')
+            return json.load(scene_file)
+        except FileNotFoundError:
+            # If file does not exist and a file is provided, create the scene file and read in the provided file
+            if len(file_path) > 0:
+                scene_file_create = open(scene_file, 'w', encoding='UTF-8')
+                scene_file_create.write(open(file_path[1], 'r', encoding='UTF-8').read())
+                scene_file_create.close()
+                scene_file = open(scene_file, 'r', encoding='UTF-8')
+                return json.load(scene_file)
+            return
 
     def prev_image(self, widget):
         """
@@ -101,7 +199,9 @@ class ObsMapper(toga.App):
         """
         image_viewer = widget.window.widgets.get('image_viewer')
         person_label = widget.window.widgets.get('person_label')
+        # Gets the index of the current image
         cur_image = self.cam_images.index(str(image_viewer.image.path))
+        # If the current image is the first image in the list, wrap around to the last image. Else get previous image
         if cur_image - 1 < 0:
             image_viewer.image = toga.Image(self.cam_images[-1])
             person_label.text = self.cams[str(image_viewer.image.path)][1]
@@ -116,7 +216,9 @@ class ObsMapper(toga.App):
         """
         image_viewer = widget.window.widgets.get('image_viewer')
         person_label = widget.window.widgets.get('person_label')
+        # Gets the index of the current image
         cur_image = self.cam_images.index(str(image_viewer.image.path))
+        # If the current image is the last image in the list, wrap around to the first image. Else get next image
         if cur_image + 1 == len(self.cam_images):
             image_viewer.image = toga.Image(self.cam_images[0])
             person_label.text = self.cams[str(image_viewer.image.path)][1]
@@ -127,30 +229,53 @@ class ObsMapper(toga.App):
     def get_cameras(self, widget):
         # pylint: disable=attribute-defined-outside-init
         """
-        Gets cameras from the selected window
+        Gets cameras from the selected window or provided screenshot
         """
+
+        def get_from_screenshot(_, screenshot):
+            """
+            Gets cameras from a provided screenshot
+            :param _: Throw away parameter
+            :param screenshot: Path to the selected screenshot
+            """
+            # Gets camera information from image_processing and sets the image_viewer to the first camera
+            self.cams = self.image_proc.get_camera_pos(None, screenshot=screenshot)
+            self.cam_images = list(self.cams.keys())
+            image_viewer = widget.window.widgets.get('image_viewer')
+            image_viewer.image = toga.Image(self.cam_images[0])
+            # Checks to see if obs_scenes is set and if not makes the user select a file to set it
+            if self.obs_scenes is None:
+                self.main_window.open_file_dialog('Select OBS Sources exported json',
+                                                  on_result=self.get_obs_scene_export, file_types=['json'])
+
         window_selection = widget.window.widgets.get('window_selection')
         selected_window = window_selection.value
-        window_dict = self.image_proc.get_windows()
-        for k in window_dict.keys():
-            if k.startswith(selected_window):
-                self.cams = self.image_proc.get_camera_pos(k)
-                self.cam_images = list(self.cams.keys())
-                image_viewer = widget.window.widgets.get('image_viewer')
-                image_viewer.image = toga.Image(self.cam_images[0])
-                return
+        # If Select Screenshot is selected then make user select a screenshot
+        if selected_window == 'Select Screenshot':
+            self.main_window.open_file_dialog('Select call screenshot', on_result=get_from_screenshot,
+                                              file_types=['jpg', 'jpeg', 'png'])
+        else:
+            # If a window is selected then get the window title and set cams and image_viewer
+            window_dict = self.image_proc.get_windows()
+            for k in window_dict.keys():
+                if k.startswith(selected_window):
+                    self.cams = self.image_proc.get_camera_pos(k)
+                    self.cam_images = list(self.cams.keys())
+                    image_viewer = widget.window.widgets.get('image_viewer')
+                    image_viewer.image = toga.Image(self.cam_images[0])
+                    return
 
     def bind_camera(self, widget):
         """
         Sets camera to the selected person
-        :param widget:
-        :return:
         """
         image_viewer = widget.window.widgets.get('image_viewer')
         cam_selection = widget.window.widgets.get('cam_selection')
         person_label = widget.window.widgets.get('person_label')
+        # If no person is selected or no preset is loaded, return
         if cam_selection.value is None:
             return
+        # Sets the name of the current camera to the person and sets the label so the user knows who it belongs to
         self.cams[str(image_viewer.image.path)][1] = cam_selection.value
         person_label.text = cam_selection.value
 
@@ -161,7 +286,8 @@ class ObsMapper(toga.App):
         cam_selection = widget.window.widgets.get('cam_selection')
         preset_selection = widget.window.widgets.get('preset_selection')
         person_label = widget.window.widgets.get('person_label')
-        cam_selection.items = self.p_h.get_people(preset_selection.value)
+        # Loads selected preset and resets cam names to blank
+        cam_selection.items = self.preset_handler.get_people(preset_selection.value)
         for cam in self.cams.values():
             cam[1] = ''
         person_label.text = ''
@@ -169,31 +295,26 @@ class ObsMapper(toga.App):
     def delete_preset(self, widget):
         """
         Deletes selected preset
-        :param widget:
-        :return:
         """
         preset_selection = widget.window.widgets.get('preset_selection')
         cam_selection = widget.window.widgets.get('cam_selection')
-        self.p_h.remove_preset(preset_selection.value)
-        self.p_h.save_presets()
-        preset_selection.items = self.p_h.get_preset_names()
+        # Removes the current preset and deletes it from the preset handler and saves it.
+        self.preset_handler.remove_preset(preset_selection.value)
+        self.preset_handler.save_presets()
+        preset_selection.items = self.preset_handler.get_preset_names()
         cam_selection.items = []
 
     def reload_windows(self, widget):
         """
         Reloads windows for window selection
-        :param widget:
-        :return:
         """
         window_selection = widget.window.widgets.get('window_selection')
-        window_selection.items = list(self.image_proc.get_windows().keys())
+        window_selection.items = list(self.image_proc.get_windows().keys()) + ['Select Screenshot']
 
-    def edit_profile_window(self, widget):
+    def edit_preset_window(self, widget):
         # pylint: disable=attribute-defined-outside-init, too-many-branches
         """
-        Window for editing profiles
-        :param widget:
-        :return:
+        Window for editing presets
         """
 
         def hide_window(widget):
@@ -233,7 +354,7 @@ class ObsMapper(toga.App):
                             return
                         preset_name.value = preset_selection.value
                         people_table.data.clear()
-                        for person in self.p_h.get_people(preset_selection.value):
+                        for person in self.preset_handler.get_people(preset_selection.value):
                             people_table.data.append(person)
                     else:
                         preset_name.value = ''
@@ -247,7 +368,8 @@ class ObsMapper(toga.App):
         # noinspection PyTypeChecker
         window = toga.Window(title='Edit Profiles Window', on_close=hide_window, size=(420, 464))
         widget.app.windows.add(window)
-        preset_name = toga.TextInput(id='preset_name', value=preset_selection.value, placeholder='Preset name', on_change=self.text_handler(20))
+        preset_name = toga.TextInput(id='preset_name', value=preset_selection.value, placeholder='Preset name',
+                                     on_change=self.text_handler(20))
         box = toga.Box(id="edit_window", style=Pack(width=420, direction=COLUMN), children=[
             preset_name,
             people_table,
@@ -263,7 +385,7 @@ class ObsMapper(toga.App):
         if not self.new_preset:
             if preset_name.value == "":
                 return
-            for person in self.p_h.get_people(preset_selection.value):
+            for person in self.preset_handler.get_people(preset_selection.value):
                 people_table.data.append(person)
         else:
             preset_name.value = ""
@@ -272,26 +394,32 @@ class ObsMapper(toga.App):
 
     def save_edit(self, widget):
         """
-        Saves preset
+        Saves preset edits
         """
         preset_name = widget.window.widgets.get('preset_name')
+        # Makes sure that the preset has a name
         if len(preset_name.value) == 0:
             preset_name.focus()
         else:
             preset_selection = widget.app.main_window.widgets.get('preset_selection')
-            new_people = []
+            # Loops through table and sets an array to the contents of the table
+            people = []
             for person in widget.window.widgets.get('people_table').data:
-                new_people.append(person.people)
+                people.append(person.people)
+            # If this is not a new preset then save the edits to the current preset
             if not self.new_preset:
-                self.p_h.edit_preset(preset_selection.value, {"preset_name": preset_name.value, "people": new_people})
+                self.preset_handler.edit_preset(preset_selection.value,
+                                                {"preset_name": preset_name.value, "people": people})
+            # If this is a new preset then create a new preset
             else:
-                self.p_h.new_preset({"preset_name": preset_name.value, "people": new_people})
-            self.p_h.save_presets()
+                self.preset_handler.new_preset({"preset_name": preset_name.value, "people": people})
+            # Saves preset changes and closes the window. Also sets cam_selection and enables preset_selection
+            self.preset_handler.save_presets()
             widget.window.hide()
             cam_selection = widget.app.main_window.widgets.get('cam_selection')
-            cam_selection.items = new_people
+            cam_selection.items = people
             preset_selection.enabled = True
-            preset_selection.items = self.p_h.get_preset_names()
+            preset_selection.items = self.preset_handler.get_preset_names()
             preset_selection.value = preset_name.value
 
     def remove_person(self, widget):
@@ -312,18 +440,22 @@ class ObsMapper(toga.App):
         new_person = toga.TextInput(placeholder='Enter name here or leave blank', on_change=self.text_handler(20),
                                     style=Pack(width=320))
         edit_box = widget.window.widgets.get('edit_box')
-        if len(edit_box.children) == 0:
-            def save_change(_widget):
-                """
-                Saves change to table and removes edit_box widget
-                """
-                if len(new_person.value) > 0:
-                    people_table.data.append(new_person.value)
-                children = edit_box.children
-                for i in reversed(range(len(children))):
-                    edit_box.remove(children[i])
-                edit_window.add(save_edit)
 
+        def save_change(_widget):
+            """
+            Saves change to table and removes edit_box widget
+            """
+            # Checks if the new_person text is grater than 0 and if so adds the person to the table.
+            if len(new_person.value) > 0:
+                people_table.data.append(new_person.value)
+            # Removes edit fields and adds save_edit button
+            children = edit_box.children
+            for i in reversed(range(len(children))):
+                edit_box.remove(children[i])
+            edit_window.add(save_edit)
+
+        # Checks if edit fields exist and if not creates then
+        if len(edit_box.children) == 0:
             edit_box.add(
                 new_person,
                 toga.Button(id='save_change', text='Save Change', style=Pack(width=100), on_press=save_change)
@@ -336,35 +468,42 @@ class ObsMapper(toga.App):
         people_table = widget.window.widgets.get('people_table')
         save_edit = widget.window.widgets.get('save_edit')
         edit_window = widget.window.widgets.get('edit_window')
+        # Makes sure that people_table has contents
+
         if people_table.selection is not None:
             edit_window.remove(save_edit)
             name_changed = toga.TextInput(placeholder='Leave blank to not edit', on_change=self.text_handler(20),
                                           style=Pack(width=320))
             edit_box = widget.window.widgets.get('edit_box')
 
-            if len(edit_box.children) == 0:
-                def save_change(_widget):
-                    """
-                    Saves changes to table and removes edit_box widget
-                    """
-                    if len(name_changed.value) > 0:
-                        # pylint: disable=protected-access
-                        # noinspection PyProtectedMember
-                        people = people_table.data._data
-                        people_edited = []
-                        for i, person in enumerate(people):
-                            if person.people == people_table.selection.people:
-                                people_edited.append(name_changed.value)
-                            else:
-                                people_edited.append(person.people)
-                        people_table.data.clear()
-                        for person in people_edited:
-                            people_table.data.append(person)
-                    children = edit_box.children
-                    for i in reversed(range(len(children))):
-                        edit_box.remove(children[i])
-                    edit_window.add(save_edit)
+            def save_change(_widget):
+                """
+                Saves changes to table and removes edit_box widget
+                """
+                # Checks if the new_person text is grater than 0 and if so adds the person to the table.
+                if len(name_changed.value) > 0:
+                    # pylint: disable=protected-access
+                    # noinspection PyProtectedMember
+                    # Loops through all data in the table and modifies edited people. This is due to windows table not updating properly
+                    people = people_table.data._data
+                    people_edited = []
+                    for i, person in enumerate(people):
+                        if person.people == people_table.selection.people:
+                            people_edited.append(name_changed.value)
+                        else:
+                            people_edited.append(person.people)
+                    people_table.data.clear()
+                    for person in people_edited:
+                        people_table.data.append(person)
+                    people_table.refresh()
+                # Removes edit fields and adds save_edit button
+                children = edit_box.children
+                for i in reversed(range(len(children))):
+                    edit_box.remove(children[i])
+                edit_window.add(save_edit)
 
+            # Checks if edit fields exist and if not creates then
+            if len(edit_box.children) == 0:
                 edit_box.add(
                     name_changed,
                     toga.Button(id='save_change', text='Save Change', style=Pack(width=100), on_press=save_change)
@@ -376,6 +515,7 @@ class ObsMapper(toga.App):
         """
 
         def text_len_validation(widget):
+            # If text length goes past the allowed limit, splice the string to set length
             if len(widget.value) > value:
                 widget.value = widget.value[0:value]
 
@@ -384,26 +524,61 @@ class ObsMapper(toga.App):
     def map_cameras(self, widget):
         """
         Maps cameras to obs
-        :param widget:
-        :return:
         """
         window_selection = widget.window.widgets.get('window_selection')
-        # print(self.image_proc.get_exe_name(window_selection.value))
-        cameras = []
-        for cam in self.cams.values():
-            if platform.system() == 'Windows':
-                cameras.append(
-                    {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]), "y1": cam[0][3]})
-            if platform.system() == 'Linux':
-                cameras.append(
-                    {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]) + 40, "y1": cam[0][3]})
-        obs_cams_send = str({
-            "arg": "crop camera",
-            "os": platform.system(),
-            "exe": self.image_proc.get_exe_name(window_selection.value),
-            "cameras": cameras
-        })
-        self.obs_server.send_command(obs_cams_send)
+        # If a screenshot is selected, uses scene info to get needed exe information
+        if window_selection.value == 'Select Screenshot':
+            cameras = []
+            # Loops through all cameras and makes needed cam json information to create a new source or edit an existing one
+            for cam in self.cams.values():
+                if platform.system() == 'Linux':
+                    cameras.append(
+                        {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]) + 40, "y1": cam[0][3]})
+                else:
+                    cameras.append(
+                        {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]), "y1": cam[0][3]})
+            # Gets scene information and sends command to OBS plugin to create a new or edit an existing scene
+            scene = self.get_source_info_from_json(widget)
+            settings = list(dict(scene['settings']).items())
+            obs_cams_send = str({
+                "arg": "crop camera",
+                "os": settings[0][0],
+                "exe": settings[0][1],
+                "cameras": cameras,
+                "id": scene['id']  #
+            })
+            self.obs_server.send_command(obs_cams_send)
+        else:
+            cameras = []
+            # Loops through all cameras and makes needed cam json information to create a new source or edit an existing one
+            for cam in self.cams.values():
+                if platform.system() == 'Windows':
+                    cameras.append(
+                        {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]), "y1": cam[0][3]})
+                if platform.system() == 'Linux':
+                    cameras.append(
+                        {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]) + 40, "y1": cam[0][3]})
+            # Sends information to OBS plugin to create or edit an existing scene
+            obs_cams_send = str({
+                "arg": "crop camera",
+                "os": platform.system(),
+                "exe": self.image_proc.get_exe_name(window_selection.value),
+                "cameras": cameras,
+                "id": ''
+            })
+            self.obs_server.send_command(obs_cams_send)
+
+    def get_source_info_from_json(self, widget):
+        """
+        Gets the source info needed to create a caputre source in OBS
+        """
+        preset_selection = widget.window.widgets.get('preset_selection')
+        # Looks through all provided sources for a scene that has the same name as the preset name
+        for source in self.obs_scenes['sources']:
+            preset_name = str('OBSMapper-' + str(preset_selection.value))
+            if source['name'] == preset_name:
+                return source
+        # OBSMapper-{PresetName} is format that is looked for
 
 
 if __name__ == "__main__":

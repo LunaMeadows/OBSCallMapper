@@ -9,7 +9,7 @@ def test_get_windows_dict():
 
 def test_get_screenshot_no_window():
     ip = image_processing.ImageProcessing(os.getcwd(), True)
-    with pytest.raises(image_processing.WindowError):
+    with pytest.raises(IndexError):
         ip.get_screenshot('')
 
 def test_get_screenshot_window_does_not_exist():
@@ -38,6 +38,10 @@ def test_get_camera_pos_window_does_not_exist():
     with pytest.raises(IndexError):
         ip.get_camera_pos('Cows')
 
+def test_get_camera_pos_screenshot_provided_exists():
+    ip = image_processing.ImageProcessing(os.getcwd(), False)
+    assert type(ip.get_camera_pos(None, screenshot='tests/discord_test.png')) == dict
+
 def test_get_exe_name_window_exists():
     ip = image_processing.ImageProcessing(os.getcwd(), True)
     assert type(ip.get_exe_name('General')) == str
@@ -47,5 +51,12 @@ def test_get_exe_name_window_does_not_exists():
     with pytest.raises(IndexError):
         ip.get_exe_name('Cows')[0]
 
+def test_toggle_debug_on():
+    ip = image_processing.ImageProcessing(os.getcwd(), False)
+    assert ip.toggle_debugging() is None
+
+def test_toggle_debug_off():
+    ip = image_processing.ImageProcessing(os.getcwd(), True)
+    assert ip.toggle_debugging() is None
 
 

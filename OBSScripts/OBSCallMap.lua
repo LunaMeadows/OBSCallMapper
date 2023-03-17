@@ -42,7 +42,7 @@ function script_unload()
     end
 end
 
-function get_source(scene, win_title, cam_info, os)
+function get_source(scene, win_title, cam_info, os, id)
     source = obs.obs_get_source_by_name(cam_info['camName'])
     if source == nil then
         debug_print("No source found, creating new source for " .. cam_info['camName'])
@@ -57,6 +57,13 @@ function get_source(scene, win_title, cam_info, os)
         elseif os == 'Windows' then
             obs.obs_data_set_string(settings, "window", win_title)
             source = obs.obs_source_create("window_capture", cam_info['camName'], settings, None)
+            obs.obs_scene_add(scene, source)
+            obs.obs_scene_release(scene)
+            obs.obs_data_release(settings)
+            return source
+        else
+            obs.obs_data_set_string(settings, os, win_title)
+            source = obs.obs_source_create(id, cam_info['camName'], settings, None)
             obs.obs_scene_add(scene, source)
             obs.obs_scene_release(scene)
             obs.obs_data_release(settings)
@@ -99,11 +106,11 @@ function get_crop(source)
     end
 end
 
-function crop_cam(win_title, cam_info, os)
+function crop_cam(win_title, cam_info, os, id)
     for  k,v in pairs(cam_info) do
         current_scene = obs.obs_frontend_get_current_scene()
         scene = obs.obs_scene_from_source(current_scene)
-        source = get_source(scene, win_title, v, os)
+        source = get_source(scene, win_title, v, os, id)
         crop = get_crop(source)
         settings = obs.obs_source_get_settings(crop)
         i = obs.obs_data_set_int
@@ -130,7 +137,7 @@ function client()
             debug_print('Data received after ' .. tick .. ' polls: "' .. data .. '"')
             local args = json.decode(data)
             if args['arg'] == ("crop camera") then
-                crop_cam(args['exe'], args['cameras'], args['os'])
+                crop_cam(args['exe'], args['cameras'], args['os'], args['id'])
             end
         elseif status ~= "timeout" then
             error(status)
