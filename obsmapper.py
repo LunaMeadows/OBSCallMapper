@@ -5,6 +5,8 @@ import json  # Used to read in the source export from OBS to try and find a sour
 import os  # Used to create proper paths for files and folders
 import platform  # Used to find out the users system to create proper scenes in OBS
 import webbrowser  # Used to open folders
+from PIL import Image #  Used to create a blank image
+import io
 from typing import Dict, List, Union  # Used for type hinting
 
 import toga  # Used to create the user interface
@@ -255,7 +257,13 @@ class ObsMapper(toga.App):
             if self.obs_scenes is None:
                 export_json = await self.main_window.open_file_dialog('Select OBS Sources exported json', file_types=['json'])
                 self.obs_scenes = self.get_obs_scene_export(export_json.as_posix())
-
+        self.cams = {}
+        self.cam_images = []
+        blank_img = Image.new('RGBA', size = (1,1))
+        buffer = io.BytesIO()
+        blank_img.save(buffer, format='png', compress_level=0)
+        image_viewer = widget.window.widgets.get('image_viewer')
+        image_viewer.image = toga.Image(data=buffer.getvalue())
         window_selection = widget.window.widgets.get('window_selection')
         selected_window = window_selection.value
         # If Select Screenshot is selected then make user select a screenshot
