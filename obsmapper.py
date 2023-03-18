@@ -121,11 +121,9 @@ class ObsMapper(toga.App):
         )
         # Creates a command to allow user to change the provided OBS exported json
         obs_sources_command = toga.Command(
-            action=lambda _: self.main_window.open_file_dialog('Select OBS Sources exported json',
-                                                               on_result=self.get_obs_scene_export,
-                                                               file_types=['json']),
+            action=self.obs_source_command,
             text='Select OBS Source Export',
-            group=Group.APP
+            group=Group.FILE
         )
         debug_enable = toga.Command(
             action=self.toggle_debugging,
@@ -135,7 +133,7 @@ class ObsMapper(toga.App):
         open_data_folder = toga.Command(
             action=self.open_data_folder,
             text='Open data folder',
-            group=Group.APP
+            group=Group.FILE
         )
         self.commands.add(obs_sources_command, debug_enable, open_data_folder)
         # Checks if the platform is a Windows machine and if so sets the split container to the content,
@@ -170,7 +168,11 @@ class ObsMapper(toga.App):
         """
         webbrowser.open(os.path.realpath(self.data_path))
 
-    def get_obs_scene_export(self, _=None, file_path: str =""):
+    async def obs_source_command(self, widget):
+        export_json = await self.main_window.open_file_dialog('Select OBS Sources exported json', file_types=['json'])
+        self.obs_scenes = self.get_obs_scene_export(export_json.as_posix())
+
+    def get_obs_scene_export(self, file_path: str = ""):
         """
         Allows user to select scene export json file from OBS
         :param file_path: Selected path to the obs exported json file.
@@ -180,13 +182,20 @@ class ObsMapper(toga.App):
         scene_file = os.path.join(self.data_path, 'obs_scenes.json')
         try:
             # Try to open and read the scene_file
-            scene_file = open(scene_file, 'r', encoding='UTF-8')
-            return json.load(scene_file)
+            if len(file_path) > 0:
+                scene_file_create = open(scene_file, 'w', encoding='UTF-8')
+                scene_file_create.write(open(file_path, 'r', encoding='UTF-8').read())
+                scene_file_create.close()
+                scene_file = open(scene_file, 'r', encoding='UTF-8')
+                return json.load(scene_file)
+            else:
+                scene_file = open(scene_file, 'r', encoding='UTF-8')
+                return json.load(scene_file)
         except FileNotFoundError:
             # If file does not exist and a file is provided, create the scene file and read in the provided file
             if len(file_path) > 0:
                 scene_file_create = open(scene_file, 'w', encoding='UTF-8')
-                scene_file_create.write(open(file_path[1], 'r', encoding='UTF-8').read())
+                scene_file_create.write(open(file_path, 'r', encoding='UTF-8').read())
                 scene_file_create.close()
                 scene_file = open(scene_file, 'r', encoding='UTF-8')
                 return json.load(scene_file)
@@ -226,16 +235,15 @@ class ObsMapper(toga.App):
             image_viewer.image = toga.Image(self.cam_images[cur_image + 1])
             person_label.text = self.cams[str(image_viewer.image.path)][1]
 
-    def get_cameras(self, widget):
+    async def get_cameras(self, widget):
         # pylint: disable=attribute-defined-outside-init
         """
         Gets cameras from the selected window or provided screenshot
         """
 
-        def get_from_screenshot(_, screenshot):
+        async def get_from_screenshot(screenshot):
             """
             Gets cameras from a provided screenshot
-            :param _: Throw away parameter
             :param screenshot: Path to the selected screenshot
             """
             # Gets camera information from image_processing and sets the image_viewer to the first camera
@@ -245,15 +253,16 @@ class ObsMapper(toga.App):
             image_viewer.image = toga.Image(self.cam_images[0])
             # Checks to see if obs_scenes is set and if not makes the user select a file to set it
             if self.obs_scenes is None:
-                self.main_window.open_file_dialog('Select OBS Sources exported json',
-                                                  on_result=self.get_obs_scene_export, file_types=['json'])
+                export_json = await self.main_window.open_file_dialog('Select OBS Sources exported json', file_types=['json'])
+                self.obs_scenes = self.get_obs_scene_export(export_json.as_posix())
 
         window_selection = widget.window.widgets.get('window_selection')
         selected_window = window_selection.value
         # If Select Screenshot is selected then make user select a screenshot
         if selected_window == 'Select Screenshot':
-            self.main_window.open_file_dialog('Select call screenshot', on_result=get_from_screenshot,
+            screenshot = await self.main_window.open_file_dialog('Select call screenshot',
                                               file_types=['jpg', 'jpeg', 'png'])
+            await get_from_screenshot(screenshot.as_posix())
         else:
             # If a window is selected then get the window title and set cams and image_viewer
             window_dict = self.image_proc.get_windows()
@@ -533,7 +542,7 @@ class ObsMapper(toga.App):
             for cam in self.cams.values():
                 if platform.system() == 'Linux':
                     cameras.append(
-                        {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]) + 40, "y1": cam[0][3]})
+                        {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]) - 40, "y1": cam[0][3]})
                 else:
                     cameras.append(
                         {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]), "y1": cam[0][3]})
@@ -557,7 +566,7 @@ class ObsMapper(toga.App):
                         {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]), "y1": cam[0][3]})
                 if platform.system() == 'Linux':
                     cameras.append(
-                        {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]) + 40, "y1": cam[0][3]})
+                        {'camName': cam[1], "x": cam[0][0], "x1": cam[0][2], "y": int(cam[0][1]) - 40, "y1": cam[0][3]})
             # Sends information to OBS plugin to create or edit an existing scene
             obs_cams_send = str({
                 "arg": "crop camera",
@@ -570,7 +579,7 @@ class ObsMapper(toga.App):
 
     def get_source_info_from_json(self, widget):
         """
-        Gets the source info needed to create a caputre source in OBS
+        Gets the source info needed to create a capture source in OBS
         """
         preset_selection = widget.window.widgets.get('preset_selection')
         # Looks through all provided sources for a scene that has the same name as the preset name
@@ -578,6 +587,7 @@ class ObsMapper(toga.App):
             preset_name = str('OBSMapper-' + str(preset_selection.value))
             if source['name'] == preset_name:
                 return source
+        widget.app.main_window.error_dialog(title='OBS Source Error', message='You do not have a window capture source named\n' + 'OBSMapper-' + str(preset_selection.value) + '\n Please make sure you have one named \n OBSMapper-'+ str(preset_selection.value) +'\n and re export your scenes before re selecting a scene export file from the File command list.')
         # OBSMapper-{PresetName} is format that is looked for
 
 

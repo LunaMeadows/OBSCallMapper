@@ -87,6 +87,14 @@ function get_source(scene, win_title, cam_info, os, id)
             obs.obs_source_update(source, settings)
             obs.obs_data_release(settings)
             return source
+        else
+            settings = obs.obs_source_get_settings(source)
+            debug_print("Source window before modifying is " .. obs.obs_data_get_string(settings, "capture_window"))
+            obs.obs_data_set_string(settings, os, win_title)
+            debug_print("Source window after modifying is " .. obs.obs_data_get_string(settings, "capture_window"))
+            obs.obs_source_update(source, settings)
+            obs.obs_data_release(settings)
+            return source
         end
     end
 end
