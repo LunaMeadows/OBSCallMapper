@@ -1,4 +1,9 @@
 
+# OBS Call Mapper
+
+OBS Call Mapper allows you to map cameras from programs like Discord and Zoom to OBS much easier. You simply set whos camera is who and press Map Cameras and they will get mapped to your OBS.
+
+
 ## How To Use
 
 #### Warnings
